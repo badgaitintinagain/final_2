@@ -1,14 +1,42 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
+
+// Load environment variables
 require('dotenv').config();
 
 const app = express();
 
+// Construct MongoDB URI with database name
+const MONGODB_URI = `${process.env.mongodb_url}/${process.env.mongodb_db_name}`;
+
+// MongoDB Connection Options
+const mongoOptions = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+};
+
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch((error) => console.error('MongoDB connection error:', error));
+mongoose.connect(MONGODB_URI, mongoOptions)
+    .then(() => {
+        console.log('Successfully connected to MongoDB Atlas');
+        console.log(`Connected to database: ${process.env.mongodb_db_name}`);
+    })
+    .catch((err) => {
+        console.error('MongoDB connection error:', err);
+        process.exit(1);
+    });
+
+// Handle MongoDB connection events
+mongoose.connection.on('error', err => {
+    console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected');
+});
 
 // Middleware
 app.use(express.json());
