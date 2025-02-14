@@ -1,66 +1,130 @@
-const { connect } = require('../mongodb');
-const bcrypt = require('bcrypt');
+const User = require('../models/userModel');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
+const { connect } = require('../mongodb');
+const bcrypt = require('bcrypt');
+const { ObjectId } = require('mongodb');
 
-const register = async (req, res) => {
+// Register user
+exports.register = async (req, res) => {
     try {
         const db = await connect();
-        const users = db.collection('users');
-        const { username, password, role } = req.body;
+        
+        // Log the request body for debugging
+        console.log('Registration attempt:', req.body);
 
-        const existingUser = await users.findOne({ username });
-        if (existingUser) {
-            return res.status(400).json({ message: 'Username already exists' });
+        const { username, password, role = 'User' } = req.body;
+
+        // Validate input
+        if (!username || !password) {
+            return res.status(400).json({
+                status: 'fail',
+                message: 'Username and password are required'
+            });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-        await users.insertOne({
+        // Check if user exists
+        const existingUser = await db.collection('users').findOne({ username });
+        if (existingUser) {
+            return res.status(400).json({
+                status: 'fail',
+                message: 'Username already exists'
+            });
+        }
+
+        // Hash password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Create user
+        const result = await db.collection('users').insertOne({
             username,
             password: hashedPassword,
-            role: role || 'User',
+            role,
             createdAt: new Date()
         });
 
-        res.status(201).json({ message: 'User registered successfully' });
+        // Create response without password
+        const user = {
+            _id: result.insertedId,
+            username,
+            role
+        };
+
+        res.status(201).json({
+            status: 'success',
+            data: { user }
+        });
     } catch (error) {
         console.error('Registration error:', error);
-        res.status(500).json({ message: 'Internal server error' });
+        res.status(400).json({
+            status: 'fail',
+            message: error.message
+        });
     }
 };
 
-const login = async (req, res) => {
+// Login user
+exports.login = async (req, res) => {
     try {
         const db = await connect();
         const { username, password } = req.body;
 
+        // Check if user exists
         const user = await db.collection('users').findOne({ username });
         if (!user) {
-            return res.status(401).json({ message: 'Invalid credentials' });
+            return res.status(401).json({
+                status: 'fail',
+                message: 'Invalid username or password'
+            });
         }
 
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) {
-            return res.status(401).json({ message: 'Invalid credentials' });
+        // Check password
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                status: 'fail',
+                message: 'Invalid username or password'
+            });
         }
 
+        // Generate token
         const token = jwt.sign(
-            { userId: user._id, role: user.role },
+            { id: user._id, role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: '1h' }
+            { expiresIn: '24h' }
         );
 
-        res.json({
+        res.status(200).json({
             status: 'success',
-            message: 'Login successful',
             data: {
-                username: user.username,
-                role: user.role,
-                token: token
+                token,
+                user: {
+                    _id: user._id,
+                    username: user.username,
+                    role: user.role
+                }
             }
         });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({
+            status: 'fail',
+            message: error.message
+        });
+    }
+};
+
+exports.logout = async (req, res) => {
+    try {
+        res.status(200).json({
+            status: 'success',
+            message: 'Logged out successfully'
+        });
+    } catch (error) {
+        res.status(400).json({
+            status: 'fail',
+            message: error.message
+        });
     }
 };
 
@@ -84,7 +148,8 @@ const getAllUsers = async (req, res) => {
 };
 
 module.exports = {
-    register,
-    login,
+    register: exports.register,
+    login: exports.login,
+    logout: exports.logout,
     getAllUsers // Make sure this is exported
 };

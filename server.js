@@ -1,9 +1,11 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const dotenv = require('dotenv');
 const path = require('path');
+const cors = require('cors');
 
 // Load environment variables
-require('dotenv').config();
+dotenv.config();
 
 const app = express();
 
@@ -39,14 +41,28 @@ mongoose.connection.on('disconnected', () => {
 });
 
 // Middleware
+app.use(cors());
 app.use(express.json());
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
+const productRoutes = require('./routes/productRoutes');
+const orderRoutes = require('./routes/orderRoutes');
 
 app.use('/api/auth', authRoutes);
-app.use('/api', userRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/orders', orderRoutes);
+
+// Error handling
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({
+        status: 'error',
+        message: 'Something went wrong!'
+    });
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
